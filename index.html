@@ -37,4 +37,50 @@ code { background:#f0f0f0; padding:0.1rem 0.3rem; border-radius:4px; }
 <p style="font-size:0.9rem;color:#666;">sunyu is banned :C.</p>
 </footer>
 </body>
+  <head>
+  <meta charset="utf-8">
+  <title>My Restaurant Map</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+  <!-- Leaflet CSS (local copy) -->
+  <link rel="stylesheet" href="leaflet/leaflet.css" />
+
+  <style>
+    /* Make the map fill the whole page */
+    html, body, #map {
+      height: 100%;
+      margin: 0;
+      padding: 0;
+    }
+  </style>
+</head>
+<body>
+  <!-- Map container -->
+  <div id="map"></div>
+
+  <!-- Leaflet JS (local copy) -->
+  <script src="leaflet/leaflet.js"></script>
+
+  <script>
+    // Fix marker icon paths for local Leaflet
+    L.Icon.Default.mergeOptions({
+      iconUrl: 'leaflet/images/marker-icon.png',
+      shadowUrl: 'leaflet/images/marker-shadow.png'
+    });
+
+    // Initialize map centered on Seoul (latitude, longitude)
+    var map = L.map('map').setView([37.5665, 126.9780], 13);
+
+    // Add OpenStreetMap tiles
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors'
+    }).addTo(map);
+
+    // Add a sample marker
+    var marker = L.marker([37.5665, 126.9780]).addTo(map);
+    marker.bindPopup("<b>Sample Restaurant</b><br>Click me!").openPopup();
+  </script>
+</body>
+
 </html>
