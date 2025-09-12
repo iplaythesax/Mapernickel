@@ -1,82 +1,39 @@
-<!doctype html>
-<html lang="en">
+<!DOCTYPE html>
+<html>
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Blank GitHub Page</title>
-<style>
-body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Comic Sans; padding: 3rem; max-width: 900px; margin: auto; }
-pre { background:#f4f4f4; padding:1rem; overflow:auto; }
-code { background:#f0f0f0; padding:0.1rem 0.3rem; border-radius:4px; }
-</style>
-</head>
-<body>
-<h1>Blank GitHub Pages Example</h1>
-<p>This is a minimal page you can use as a starting point. Follow the steps in the HTML comment at the top of this file to publish it with GitHub Pages.</p>
-
-
-<h2>How to add an image</h2>
-<p>Upload an image to the repository in a folder named <code>images</code>, then use:</p>
-<pre>&lt;img src="images/your-file.jpg" alt="my image" width="400"&gt;</pre>
-
-
-<h2>This is cat</h2>
-<p><img src="image/Cat.jpg" alt="This is not Meowl" width="700"></p>
-
-<h2>This is Meowl</h2>
-<p><img src="image/Meowl.png" alt = "This is Meowl" width = "1000"></p>
-
-<h2>Sunyu is a fag</h2>
-<p><img src="image/sunyu_is_a_bigback.png" alt = "This is sunyu" width = "1000"></p>
-
-<h2>This is a Bird</h2>
-<p><img src="image/Bird.png" width = "1000"></p>
-
-
-<footer>
-<p style="font-size:0.9rem;color:#666;">sunyu is banned :C.</p>
-</footer>
-  <meta charset="utf-8">
-  <title>My Restaurant Map</title>
+  <title>Korea Map with Leaflet</title>
+  <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-  <!-- Leaflet CSS (local copy) -->
-  <link rel="stylesheet" href="leaflet/leaflet.css" />
-
+  
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    /* Make the map fill the whole page */
-    html, body, #map {
-      height: 100%;
-      margin: 0;
-      padding: 0;
+    #map {
+      height: 100vh; /* Full screen height */
+      width: 100%;
     }
   </style>
-  <!-- Map container -->
+</head>
+<body>
   <div id="map"></div>
 
-  <!-- Leaflet JS (local copy) -->
-  <script src="leaflet/leaflet.js"></script>
-
+  <!-- Leaflet JS -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  
   <script>
-    // Fix marker icon paths for local Leaflet
-    L.Icon.Default.mergeOptions({
-      iconUrl: 'leaflet/images/marker-icon.png',
-      shadowUrl: 'leaflet/images/marker-shadow.png'
-    });
-
-    // Initialize map centered on Seoul (latitude, longitude)
-    var map = L.map('map').setView([37.5665, 126.9780], 13);
+    // Initialize the map and set view over Korea
+    var map = L.map('map').setView([36.5, 127.8], 7); 
+    // [latitude, longitude], zoom level
 
     // Add OpenStreetMap tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // Add a sample marker
-    var marker = L.marker([37.5665, 126.9780]).addTo(map);
-    marker.bindPopup("<b>Sample Restaurant</b><br>Click me!").openPopup();
+    // Example marker (Seoul)
+    L.marker([37.5665, 126.9780]).addTo(map)
+      .bindPopup("<b>Seoul</b><br>Capital of South Korea")
+      .openPopup();
   </script>
 </body>
-
 </html>
