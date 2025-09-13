@@ -1,93 +1,75 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>My Map Website</title>
-
-  <!-- Leaflet CSS -->
+  <meta charset="UTF-8" />
+  <title>My Map with Save + Undo</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-
   <style>
-    body {
-      font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
-      margin: 0;
-      padding: 0;
-    }
-    h1, h2, p {
-      margin: 1rem;
-    }
-    #map {
-      height: 80vh;
-      width: 100%;
-    }
-    footer {
-      font-size: 0.9rem;
-      color: #666;
-      text-align: center;
-      margin: 1rem;
-    }
+    #map { height: 100vh; }
   </style>
 </head>
 <body>
-  <h1>Blank GitHub Pages Example with Map</h1>
-  <p>This page shows some images and a Leaflet map. Double-click on the map to add a marker.</p>
-
-  <h2>This is cat</h2>
-  <p><img src="image/Cat.jpg" alt="This is not Meowl" width="700"></p>
-
-  <h2>This is Meowl</h2>
-  <p><img src="image/Meowl.png" alt="This is Meowl" width="1000"></p>
-
-  <h2>This is Sunyu</h2>
-  <p><img src="image/sunyu_is_a_bigback.png" alt="This is Sunyu" width="1000"></p>
-
-  <h2>This is a Bird</h2>
-  <p><img src="image/Bird.png" width="1000"></p>
-
-  <h2>Interactive Map</h2>
+  <h1>My Map</h1>
   <div id="map"></div>
-
-  <footer>
-    <p>sunyu is banned :C.</p>
-  </footer>
-
-  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    // Fix marker icons
-    L.Icon.Default.mergeOptions({
-      iconUrl: 'https://unpkg.com/leaflet/dist/images/marker-icon.png',
-      shadowUrl: 'https://unpkg.com/leaflet/dist/images/marker-shadow.png'
-    });
-
-    // Initialize map
-    var map = L.map('map', { doubleClickZoom: false }).setView([36.5, 127.8], 7);
-
-    // Add tiles
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap contributors'
+    // Initialize the map
+    const map = L.map("map").setView([37.5665, 126.9780], 13);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      attribution: "© OpenStreetMap contributors",
     }).addTo(map);
 
-    // Load saved markers from localStorage
-    var savedMarkers = JSON.parse(localStorage.getItem("markers")) || [];
-    savedMarkers.forEach(function(coords) {
-      L.marker(coords).addTo(map)
-        .bindPopup("<b>Saved Marker</b><br>Lat: " + coords[0].toFixed(5) + "<br>Lng: " + coords[1].toFixed(5));
+    // Restore markers from localStorage
+    let savedMarkers = JSON.parse(localStorage.getItem("markers")) || [];
+    let markers = [];
+    let deletedStack = []; // for undo
+
+    function saveMarkers() {
+      const data = markers.map(m => ({
+        lat: m.getLatLng().lat,
+        lng: m.getLatLng().lng,
+        text: m.getPopup()?.getContent() || ""
+      }));
+      localStorage.setItem("markers", JSON.stringify(data));
+    }
+
+    function createMarker(lat, lng, text = "") {
+      const marker = L.marker([lat, lng]).addTo(map);
+      marker.bindPopup(text || `Marker at ${lat.toFixed(4)}, ${lng.toFixed(4)}`);
+      
+      // Right-click to delete with confirmation
+      marker.on("contextmenu", () => {
+        if (confirm("Are you sure you want to delete this marker?")) {
+          map.removeLayer(marker);
+          markers = markers.filter(m => m !== marker);
+          deletedStack.push({ lat, lng, text }); // save for undo
+          saveMarkers();
+        }
+      });
+
+      markers.push(marker);
+      saveMarkers();
+      return marker;
+    }
+
+    // Load saved markers
+    savedMarkers.forEach(m => createMarker(m.lat, m.lng, m.text));
+
+    // Double-click to add a new marker
+    map.on("dblclick", e => {
+      const { lat, lng } = e.latlng;
+      createMarker(lat, lng);
     });
 
-    // Add marker on double click
-    map.on("dblclick", function(e) {
-      var lat = e.latlng.lat;
-      var lng = e.latlng.lng;
-      var marker = L.marker([lat, lng]).addTo(map)
-        .bindPopup("<b>Custom Marker</b><br>Lat: " + lat.toFixed(5) + "<br>Lng: " + lng.toFixed(5))
-        .openPopup();
-
-      // Save marker to localStorage
-      savedMarkers.push([lat, lng]);
-      localStorage.setItem("markers", JSON.stringify(savedMarkers));
+    // Undo (Cmd+Z or Ctrl+Z)
+    document.addEventListener("keydown", e => {
+      if ((e.metaKey || e.ctrlKey) && e.key === "z") {
+        const lastDeleted = deletedStack.pop();
+        if (lastDeleted) {
+          createMarker(lastDeleted.lat, lastDeleted.lng, lastDeleted.text);
+        }
+      }
     });
   </script>
 </body>
