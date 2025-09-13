@@ -18,7 +18,7 @@
       margin: 1rem;
     }
     #map {
-      height: 80vh; /* map takes most of the screen */
+      height: 80vh;
       width: 100%;
     }
     footer {
@@ -55,31 +55,39 @@
   <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    // Fix marker icons (CDN version includes these images)
+    // Fix marker icons
     L.Icon.Default.mergeOptions({
       iconUrl: 'https://unpkg.com/leaflet/dist/images/marker-icon.png',
       shadowUrl: 'https://unpkg.com/leaflet/dist/images/marker-shadow.png'
     });
 
-    // Initialize map centered on Korea
+    // Initialize map
     var map = L.map('map', { doubleClickZoom: false }).setView([36.5, 127.8], 7);
 
-    // Add OpenStreetMap tiles
+    // Add tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       maxZoom: 19,
       attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    // Add a default marker (Seoul)
-    L.marker([37.5665, 126.9780]).addTo(map)
-      .bindPopup("<b>Seoul</b><br>Capital of South Korea");
+    // Load saved markers from localStorage
+    var savedMarkers = JSON.parse(localStorage.getItem("markers")) || [];
+    savedMarkers.forEach(function(coords) {
+      L.marker(coords).addTo(map)
+        .bindPopup("<b>Saved Marker</b><br>Lat: " + coords[0].toFixed(5) + "<br>Lng: " + coords[1].toFixed(5));
+    });
 
     // Add marker on double click
     map.on("dblclick", function(e) {
-      var lat = e.latlng.lat.toFixed(5);
-      var lng = e.latlng.lng.toFixed(5);
-      var popupText = "<b>Custom Marker</b><br>Lat: " + lat + "<br>Lng: " + lng;
-      L.marker(e.latlng).addTo(map).bindPopup(popupText).openPopup();
+      var lat = e.latlng.lat;
+      var lng = e.latlng.lng;
+      var marker = L.marker([lat, lng]).addTo(map)
+        .bindPopup("<b>Custom Marker</b><br>Lat: " + lat.toFixed(5) + "<br>Lng: " + lng.toFixed(5))
+        .openPopup();
+
+      // Save marker to localStorage
+      savedMarkers.push([lat, lng]);
+      localStorage.setItem("markers", JSON.stringify(savedMarkers));
     });
   </script>
 </body>
