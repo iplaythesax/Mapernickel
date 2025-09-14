@@ -16,12 +16,16 @@
 <body>
 <div id="map"></div>
 
+<!-- Leaflet -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+<!-- Firebase -->
 <script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-analytics.js"></script>
 <script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js"></script>
 
 <script>
+  // Firebase initialization
   const firebaseConfig = {
     apiKey: "AIzaSyAoTpaWPuqb__Jk9uipns0aRpud0sIG9rk",
     authDomain: "mapernickel.firebaseapp.com",
@@ -35,9 +39,11 @@
   firebase.analytics();
   const storage = firebase.storage();
 
-  document.addEventListener("DOMContentLoaded", function() {
+  // Wait for DOM to load
+  document.addEventListener("DOMContentLoaded", () => {
 
     const map = L.map('map', { doubleClickZoom: false }).setView([36.5, 127.8], 7);
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '© OpenStreetMap contributors',
       maxZoom: 19
@@ -58,32 +64,22 @@
 
       function renderPopup() {
         let html = '<div class="popup-content">';
-        // Display images with delete button
         marker.customImages.forEach((img, index) => {
           html += `<div>
             <img src="${img}" alt="image">
             <button data-index="${index}" class="deleteImageBtn">Delete Image</button>
           </div>`;
         });
-        // Text display (editable)
         html += `<div class="editable-text" id="editableText">${marker.customText || "Double-click to add note"}</div>`;
         html += `<br>
           <button id="addImageBtn">Add Image</button>
           <input type="file" id="fileInput" accept="image/*" style="display:none" />
         `;
         html += '</div>';
-        marker.bindPopup(html).openPopup();
+        marker.bindPopup(html);
       }
 
       renderPopup();
-
-      marker.on('contextmenu', () => {
-        if (confirm('Are you sure you want to delete this marker?')) {
-          map.removeLayer(marker);
-          markers = markers.filter(m => m !== marker);
-          deletedStack.push({ lat, lng, text: marker.customText, images: marker.customImages });
-        }
-      });
 
       marker.on('popupopen', () => {
         const addImageBtn = document.getElementById('addImageBtn');
@@ -101,21 +97,21 @@
               snapshot.ref.getDownloadURL().then(url => {
                 marker.customImages.push(url);
                 renderPopup();
+                marker.openPopup(); // reopen to refresh content
               });
             });
           }
         };
 
-        // Delete individual images
         deleteButtons.forEach(btn => {
           btn.onclick = () => {
             const index = parseInt(btn.getAttribute('data-index'));
             marker.customImages.splice(index, 1);
             renderPopup();
+            marker.openPopup();
           };
         });
 
-        // Double-click to edit text
         editableText.ondblclick = () => {
           const textarea = document.createElement('textarea');
           textarea.value = marker.customText;
@@ -127,18 +123,25 @@
           textarea.onblur = () => {
             marker.customText = textarea.value;
             renderPopup();
+            marker.openPopup();
           };
         };
+      });
+
+      marker.on('contextmenu', () => {
+        if (confirm('Are you sure you want to delete this marker?')) {
+          map.removeLayer(marker);
+          markers = markers.filter(m => m !== marker);
+          deletedStack.push({ lat, lng, text: marker.customText, images: marker.customImages });
+        }
       });
 
       markers.push(marker);
       return marker;
     }
 
-    // Double-click to add marker
     map.on('dblclick', e => addMarker(e.latlng.lat, e.latlng.lng));
 
-    // Undo deleted marker
     document.addEventListener('keydown', e => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
         const last = deletedStack.pop();
