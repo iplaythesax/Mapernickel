@@ -3,27 +3,25 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Interactive Map with Add Image Button</title>
+<title>Interactive Map with Editable Notes</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 <style>
   html, body { margin:0; padding:0; height:100%; }
   #map { width:100%; height:100%; }
   .popup-content img { max-width:200px; display:block; margin-bottom:5px; }
-  .popup-content textarea { width: 100%; box-sizing: border-box; margin-bottom:5px; }
-  .popup-content button { margin-bottom:5px; }
+  .popup-content button { margin:2px 0; }
+  .editable-text { cursor: pointer; border-bottom: 1px dotted #888; display: inline-block; }
 </style>
 </head>
 <body>
 <div id="map"></div>
 
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-analytics.js"></script>
+<script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js"></script>
 
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-analytics.js";
-  import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js";
-
-  // --- Firebase config ---
+<script>
   const firebaseConfig = {
     apiKey: "AIzaSyAoTpaWPuqb__Jk9uipns0aRpud0sIG9rk",
     authDomain: "mapernickel.firebaseapp.com",
@@ -33,96 +31,122 @@
     appId: "1:1098451360374:web:9a87f7693e71e813fd9d57",
     measurementId: "G-759J0EHB7K"
   };
-  const app = initializeApp(firebaseConfig);
-  const analytics = getAnalytics(app);
-  const storage = getStorage(app);
+  firebase.initializeApp(firebaseConfig);
+  firebase.analytics();
+  const storage = firebase.storage();
 
-  // --- Leaflet Map ---
-  const map = L.map('map', { doubleClickZoom: false }).setView([36.5, 127.8], 7);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '© OpenStreetMap contributors',
-    maxZoom: 19
-  }).addTo(map);
+  document.addEventListener("DOMContentLoaded", function() {
 
-  L.Icon.Default.mergeOptions({
-    iconUrl: 'https://unpkg.com/leaflet/dist/images/marker-icon.png',
-    shadowUrl: 'https://unpkg.com/leaflet/dist/images/marker-shadow.png'
-  });
+    const map = L.map('map', { doubleClickZoom: false }).setView([36.5, 127.8], 7);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap contributors',
+      maxZoom: 19
+    }).addTo(map);
 
-  let markers = [];
-  let deletedStack = [];
+    L.Icon.Default.mergeOptions({
+      iconUrl: 'https://unpkg.com/leaflet/dist/images/marker-icon.png',
+      shadowUrl: 'https://unpkg.com/leaflet/dist/images/marker-shadow.png'
+    });
 
-  function addMarker(lat, lng, text="", images=[]) {
-    const marker = L.marker([lat, lng]).addTo(map);
-    marker.customText = text;
-    marker.customImages = images;
+    let markers = [];
+    let deletedStack = [];
 
-    function renderPopup() {
-      let html = '<div class="popup-content">';
-      marker.customImages.forEach(img => html += `<img src="${img}" alt="image">`);
-      html += `<p>${marker.customText}</p>`;
-      html += `
-        <textarea id="textInput" placeholder="Enter text">${marker.customText}</textarea>
-        <br>
-        <button id="addImageBtn">Add Image</button>
-        <input type="file" id="fileInput" accept="image/*" style="display:none" />
-        <br>
-        <button id="saveBtn">Save</button>
-      `;
-      html += '</div>';
-      marker.bindPopup(html).openPopup();
+    function addMarker(lat, lng, text="", images=[]) {
+      const marker = L.marker([lat, lng]).addTo(map);
+      marker.customText = text;
+      marker.customImages = images;
+
+      function renderPopup() {
+        let html = '<div class="popup-content">';
+        // Display images with delete button
+        marker.customImages.forEach((img, index) => {
+          html += `<div>
+            <img src="${img}" alt="image">
+            <button data-index="${index}" class="deleteImageBtn">Delete Image</button>
+          </div>`;
+        });
+        // Text display (editable)
+        html += `<div class="editable-text" id="editableText">${marker.customText || "Double-click to add note"}</div>`;
+        html += `<br>
+          <button id="addImageBtn">Add Image</button>
+          <input type="file" id="fileInput" accept="image/*" style="display:none" />
+        `;
+        html += '</div>';
+        marker.bindPopup(html).openPopup();
+      }
+
+      renderPopup();
+
+      marker.on('contextmenu', () => {
+        if (confirm('Are you sure you want to delete this marker?')) {
+          map.removeLayer(marker);
+          markers = markers.filter(m => m !== marker);
+          deletedStack.push({ lat, lng, text: marker.customText, images: marker.customImages });
+        }
+      });
+
+      marker.on('popupopen', () => {
+        const addImageBtn = document.getElementById('addImageBtn');
+        const fileInput = document.getElementById('fileInput');
+        const editableText = document.getElementById('editableText');
+        const deleteButtons = document.querySelectorAll('.deleteImageBtn');
+
+        addImageBtn.onclick = () => fileInput.click();
+
+        fileInput.onchange = function() {
+          const file = fileInput.files[0];
+          if (file && file.type.startsWith('image/')) {
+            const storageRef = storage.ref(`images/${Date.now()}-${file.name}`);
+            storageRef.put(file).then(snapshot => {
+              snapshot.ref.getDownloadURL().then(url => {
+                marker.customImages.push(url);
+                renderPopup();
+              });
+            });
+          }
+        };
+
+        // Delete individual images
+        deleteButtons.forEach(btn => {
+          btn.onclick = () => {
+            const index = parseInt(btn.getAttribute('data-index'));
+            marker.customImages.splice(index, 1);
+            renderPopup();
+          };
+        });
+
+        // Double-click to edit text
+        editableText.ondblclick = () => {
+          const textarea = document.createElement('textarea');
+          textarea.value = marker.customText;
+          textarea.style.width = '100%';
+          textarea.style.boxSizing = 'border-box';
+          editableText.replaceWith(textarea);
+          textarea.focus();
+
+          textarea.onblur = () => {
+            marker.customText = textarea.value;
+            renderPopup();
+          };
+        };
+      });
+
+      markers.push(marker);
+      return marker;
     }
 
-    renderPopup();
+    // Double-click to add marker
+    map.on('dblclick', e => addMarker(e.latlng.lat, e.latlng.lng));
 
-    marker.on('contextmenu', () => {
-      if (confirm('Are you sure you want to delete this marker?')) {
-        map.removeLayer(marker);
-        markers = markers.filter(m => m !== marker);
-        deletedStack.push({ lat, lng, text: marker.customText, images: marker.customImages });
+    // Undo deleted marker
+    document.addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+        const last = deletedStack.pop();
+        if (last) addMarker(last.lat, last.lng, last.text, last.images);
       }
     });
 
-    marker.on('popupopen', () => {
-      const saveBtn = document.getElementById('saveBtn');
-      const addImageBtn = document.getElementById('addImageBtn');
-      const fileInput = document.getElementById('fileInput');
-      const textInput = document.getElementById('textInput');
-
-      saveBtn.onclick = () => {
-        marker.customText = textInput.value;
-        renderPopup();
-      };
-
-      addImageBtn.onclick = () => fileInput.click();
-
-      fileInput.onchange = async () => {
-        const file = fileInput.files[0];
-        if (file && file.type.startsWith('image/')) {
-          const storageRef = ref(storage, `images/${Date.now()}-${file.name}`);
-          await uploadBytes(storageRef, file);
-          const url = await getDownloadURL(storageRef);
-          marker.customImages.push(url);
-          renderPopup();
-        }
-      };
-    });
-
-    markers.push(marker);
-    return marker;
-  }
-
-  // Double-click to add marker
-  map.on('dblclick', e => addMarker(e.latlng.lat, e.latlng.lng));
-
-  // Undo deleted marker
-  document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-      const last = deletedStack.pop();
-      if (last) addMarker(last.lat, last.lng, last.text, last.images);
-    }
   });
-
 </script>
 </body>
 </html>
