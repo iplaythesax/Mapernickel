@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Interactive Map with Drag & Drop Images</title>
+<title>Interactive Map with Firebase</title>
 <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
 <style>
   html, body { margin:0; padding:0; height:100%; }
@@ -27,8 +27,32 @@
 <body>
 <div id="map"></div>
 
+<!-- Leaflet -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-<script>
+
+<!-- Firebase SDKs (module import) -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-analytics.js";
+  import { getFirestore, collection, addDoc, getDocs } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-firestore.js";
+  import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAoTpaWPuqb__Jk9uipns0aRpud0sIG9rk",
+    authDomain: "mapernickel.firebaseapp.com",
+    projectId: "mapernickel",
+    storageBucket: "mapernickel.appspot.com",
+    messagingSenderId: "1098451360374",
+    appId: "1:1098451360374:web:9a87f7693e71e813fd9d57",
+    measurementId: "G-759J0EHB7K"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const analytics = getAnalytics(app);
+  const db = getFirestore(app);
+  const storage = getStorage(app);
+
+  // --------- Leaflet Map ---------
   const map = L.map('map', { doubleClickZoom: false }).setView([36.5, 127.8], 7);
 
   L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -44,19 +68,12 @@
   let markers = [];
   let deletedStack = [];
 
-  // Load saved markers
-  const savedMarkers = JSON.parse(localStorage.getItem('markers')) || [];
-  savedMarkers.forEach(m => addMarker(m.lat, m.lng, m.text, m.images));
-
-  function saveMarkers() {
-    const data = markers.map(marker => ({
-      lat: marker.getLatLng().lat,
-      lng: marker.getLatLng().lng,
-      text: marker.customText || "",
-      images: marker.customImages || []
-    }));
-    localStorage.setItem('markers', JSON.stringify(data));
-  }
+  // Example: load markers from Firestore (optional, replace localStorage later)
+  // const snapshot = await getDocs(collection(db, "markers"));
+  // snapshot.forEach(doc => {
+  //   const data = doc.data();
+  //   addMarker(data.lat, data.lng, data.text, data.images);
+  // });
 
   function addMarker(lat, lng, text="", images=[]) {
     const marker = L.marker([lat, lng]).addTo(map);
@@ -78,68 +95,16 @@
 
     renderPopup();
 
-    // Right-click to delete
+    // Right-click delete
     marker.on('contextmenu', () => {
       if (confirm('Are you sure you want to delete this marker?')) {
         map.removeLayer(marker);
         markers = markers.filter(m => m !== marker);
         deletedStack.push({ lat, lng, text: marker.customText, images: marker.customImages });
-        saveMarkers();
       }
     });
 
     // Popup events
     marker.on('popupopen', () => {
       const saveBtn = document.getElementById('saveBtn');
-      const dropZone = document.getElementById('dropZone');
-
-      if (saveBtn) {
-        saveBtn.onclick = () => {
-          const textValue = document.getElementById('textInput').value;
-          marker.customText = textValue;
-          renderPopup();
-          saveMarkers();
-        };
-      }
-
-      if (dropZone) {
-        dropZone.addEventListener('dragover', e => {
-          e.preventDefault();
-          dropZone.classList.add('dragover');
-        });
-        dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
-        dropZone.addEventListener('drop', e => {
-          e.preventDefault();
-          dropZone.classList.remove('dragover');
-          const file = e.dataTransfer.files[0];
-          if (file && file.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onload = event => {
-              marker.customImages.push(event.target.result); // Base64 string
-              renderPopup();
-              saveMarkers();
-            };
-            reader.readAsDataURL(file);
-          }
-        });
-      }
-    });
-
-    markers.push(marker);
-    saveMarkers();
-    return marker;
-  }
-
-  // Double-click to add marker
-  map.on('dblclick', e => addMarker(e.latlng.lat, e.latlng.lng));
-
-  // Undo deleted marker
-  document.addEventListener('keydown', e => {
-    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-      const last = deletedStack.pop();
-      if (last) addMarker(last.lat, last.lng, last.text, last.images);
-    }
-  });
-</script>
-</body>
-</html>
+      con
