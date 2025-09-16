@@ -7,10 +7,15 @@
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
     html, body { height: 100%; margin: 0; }
-    body { display: flex; font-family: sans-serif; }
-    #map { flex: 1; height: 100vh; }
-    #sidebar { width: 300px; background: #f0f0f0; overflow-y: auto; padding: 10px; box-shadow: -2px 0 6px rgba(0,0,0,0.15); }
-    #sidebar h3 { margin-top: 0; }
+    body { display: flex; font-family: sans-serif; transition: all 0.3s; }
+    #map { flex: 1; height: 100vh; transition: all 0.3s; }
+    #sidebar {
+      width: 300px; background: #f0f0f0; overflow-y: auto; padding: 10px;
+      box-shadow: -2px 0 6px rgba(0,0,0,0.15); position: relative; transition: all 0.3s;
+    }
+    #sidebar.closed { width: 0; padding: 0; overflow: hidden; }
+    #sidebar h3 { margin-top: 0; display: flex; justify-content: space-between; align-items: center; }
+    .close-btn { cursor: pointer; font-weight: bold; font-size: 18px; background:none; border:none; }
     .pin-img { width: 100%; margin-bottom: 6px; border-radius: 6px; cursor: pointer; }
     .pin-form { display: flex; flex-direction: column; gap: 8px; min-width: 220px; }
     .btn { padding: 6px 10px; border-radius: 6px; border: 0; cursor: pointer; }
@@ -22,13 +27,16 @@
 <body>
   <div id="map"></div>
   <div id="sidebar">
-    <h3>Pin Images</h3>
+    <h3>
+      Pin Images
+      <button class="close-btn" onclick="toggleSidebar()">×</button>
+    </h3>
     <div id="sidebarImages"><i>Click a pin to view its images here.</i></div>
   </div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    const STORAGE_KEY = "persistentMapPins_v3";
+    const STORAGE_KEY = "persistentMapPins_v4";
     let pins = JSON.parse(localStorage.getItem(STORAGE_KEY) || "[]");
     let markers = [];
     let popupCounter = 0;
@@ -65,7 +73,12 @@
                         <button class="btn btn-delete" onclick="window.deletePin(${i})">Delete</button>
                       </div>`;
         m.bindPopup(html);
-        m.on("click",()=>renderSidebarImages(pin));
+        m.on("click",()=>{
+          if(document.getElementById("sidebar").classList.contains("closed")){
+            toggleSidebar(true);
+          }
+          renderSidebarImages(pin);
+        });
         markers.push(m);
       });
     }
@@ -115,6 +128,23 @@
       const container = document.getElementById("sidebarImages");
       if(!pin.images || pin.images.length===0){ container.innerHTML="<i>No images for this pin</i>"; return; }
       container.innerHTML = pin.images.map(img=>`<img src="${img}" class="pin-img" onclick="window.open(this.src)"/>`).join("");
+    }
+
+    function toggleSidebar(forceOpen=false){
+      const sidebar = document.getElementById("sidebar");
+      const mapEl = document.getElementById("map");
+      if(forceOpen){
+        sidebar.classList.remove("closed");
+        mapEl.style.flex = "1";
+        return;
+      }
+      if(sidebar.classList.contains("closed")){
+        sidebar.classList.remove("closed");
+        mapEl.style.flex = "1";
+      } else {
+        sidebar.classList.add("closed");
+        mapEl.style.flex = "1 1 100%";
+      }
     }
 
     map.on("click",(e)=>addPin(e.latlng.lat,e.latlng.lng));
