@@ -1,116 +1,220 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>My Google Maps Clone</title>
+  <meta charset="utf-8" />
+  <title>Persistent Map Pins (images persist)</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
   <style>
-    #map { height: 90vh; width: 100%; }
-    .pin-form { display: flex; flex-direction: column; gap: 8px; }
-    .pin-img { max-width: 200px; margin-top: 8px; border-radius: 6px; }
-    .btn { padding: 6px 10px; border: none; border-radius: 6px; cursor: pointer; }
-    .btn-save { background: #4caf50; color: white; }
-    .btn-delete { background: #f44336; color: white; margin-top: 5px; }
+    html,body { height:100%; margin:0; }
+    #map { height:100vh; width:100%; }
+    .pin-img { max-width:180px; display:block; margin:6px 0; border-radius:6px; cursor:pointer; }
+    .pin-form { display:flex; flex-direction:column; gap:8px; min-width:220px; }
+    .btn { padding:6px 10px; border-radius:6px; border:0; cursor:pointer; }
+    .btn-save { background:#2196f3; color:white; }
+    .btn-delete { background:#f44336; color:white; }
+    .preview-grid img { max-width:100%; margin-bottom:6px; border-radius:6px; }
+    .topbar { position: absolute; left:10px; top:10px; z-index:1000; background:rgba(255,255,255,0.95); padding:8px 10px; border-radius:8px; box-shadow:0 2px 6px rgba(0,0,0,0.15); font-family: sans-serif; }
   </style>
 </head>
 <body>
-  <h2>My Map Pins</h2>
+  <div class="topbar">Click the map to add a pin. Upload images in the popup. Images + notes persist on refresh.</div>
   <div id="map"></div>
 
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
   <script>
-    // --- Storage Helpers ---
-    function savePins(pins) {
-      localStorage.setItem("mapPins", JSON.stringify(pins));
-    }
+    // -----------------------
+    // Persistent Map Pins (Base64 images)
+    // -----------------------
+
+    // Helpers for localStorage
+    const STORAGE_KEY = "persistentMapPins_v1";
+    function savePins(pins) { localStorage.setItem(STORAGE_KEY, JSON.stringify(pins)); }
     function loadPins() {
-      const saved = localStorage.getItem("mapPins");
-      return saved ? JSON.parse(saved) : [];
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) { console.error("Failed to parse pins", e); return []; }
     }
 
-    let map = L.map("map").setView([37.5665, 126.9780], 12); // Default: Seoul
+    // In-memory helpers
+    let pins = loadPins();          // saved pins array { lat, lng, title, note, images: [dataURL,...] }
+    let markers = [];               // leaflet marker references
+    let popupCounter = 0;           // unique id for each popup session
+    const tempImages = {};         // temporary base64 image arrays keyed by popupId while popup open
+
+    // Map init (centered on Seoul by default)
+    const map = L.map("map").setView([37.5665, 126.9780], 12);
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      maxZoom: 19
+      maxZoom: 19,
+      attribution: '© OpenStreetMap contributors'
     }).addTo(map);
 
-    let pins = loadPins();
-    let markers = [];
+    // Utility: read FileList into array of dataURLs (returns Promise)
+    function readFilesAsDataURLs(fileList) {
+      const files = Array.from(fileList);
+      const readers = files.map(file => new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onerror = () => rej(new Error("File read error"));
+        r.onload = () => res(r.result); // dataURL
+        r.readAsDataURL(file);
+      }));
+      return Promise.all(readers);
+    }
 
+    // Render all saved pins (clears previous markers)
     function renderPins() {
       markers.forEach(m => map.removeLayer(m));
       markers = [];
 
-      pins.forEach((pin, index) => {
-        let marker = L.marker([pin.lat, pin.lng]).addTo(map);
+      pins.forEach((pin, i) => {
+        const m = L.marker([pin.lat, pin.lng]).addTo(map);
+        // Build popup: title, note, AND thumbnails for every saved image
+        let html = `<div style="min-width:220px; font-family: sans-serif;">
+                      <h3 style="margin:0 0 6px 0;">${escapeHtml(pin.title || "Untitled")}</h3>
+                      <div style="margin-bottom:6px;">${escapeHtml(pin.note || "")}</div>`;
 
-        let popupContent = `
-          <h3>${pin.title || "Untitled"}</h3>
-          <p>${pin.note || ""}</p>
-          ${pin.img ? `<img src="${pin.img}" class="pin-img"/>` : ""}
-          <button class="btn btn-delete" onclick="deletePin(${index})">Delete</button>
-        `;
+        if (pin.images && pin.images.length) {
+          html += `<div>`;
+          pin.images.forEach(img => {
+            // Use onclick that opens the image in new tab via "this.src" to avoid embedding the long base64 into JS
+            html += `<img class="pin-img" src="${img}" onclick="window.open(this.src)" />`;
+          });
+          html += `</div>`;
+        }
+        html += `<div style="margin-top:6px;">
+                  <button class="btn btn-delete" onclick="window.deletePin(${i})">Delete</button>
+                 </div></div>`;
 
-        marker.bindPopup(popupContent);
-        markers.push(marker);
+        m.bindPopup(html);
+        markers.push(m);
       });
     }
 
+    // Add pin popup (opens a form popup at lat/lng)
     function addPin(lat, lng) {
-      let formHtml = `
-        <div class="pin-form">
-          <input type="text" id="pinTitle" placeholder="Title" />
-          <textarea id="pinNote" placeholder="Note"></textarea>
-          <input type="file" id="pinImage" accept="image/*" />
-          <button class="btn btn-save" onclick="savePin(${lat}, ${lng})">Save</button>
+      popupCounter++;
+      const id = popupCounter;
+      // unique element IDs
+      const titleId = `pinTitle-${id}`;
+      const noteId  = `pinNote-${id}`;
+      const inputId = `pinImage-${id}`;
+      const previewId = `pinPreviewContainer-${id}`;
+      const saveBtnId = `pinSave-${id}`;
+
+      const content = `
+        <div class="pin-form" id="form-${id}">
+          <input id="${titleId}" placeholder="Title" />
+          <textarea id="${noteId}" rows="3" placeholder="Note"></textarea>
+          <div>
+            <input id="${inputId}" type="file" accept="image/*" multiple
+                   onchange="window.previewImages(event,'${id}')"/>
+          </div>
+          <div id="${previewId}" class="preview-grid"></div>
+          <div style="display:flex; gap:8px; margin-top:6px;">
+            <button class="btn btn-save" id="${saveBtnId}" onclick="window.savePin('${id}', ${lat}, ${lng})">Save</button>
+            <button class="btn" onclick="map.closePopup()">Cancel</button>
+          </div>
         </div>
       `;
-      L.popup()
+
+      const popup = L.popup({ maxWidth: 400, minWidth: 220 })
         .setLatLng([lat, lng])
-        .setContent(formHtml)
+        .setContent(content)
         .openOn(map);
+
+      // ensure any existing temp images for this id cleared
+      tempImages[id] = [];
     }
 
-    function savePin(lat, lng) {
-      let title = document.getElementById("pinTitle").value;
-      let note = document.getElementById("pinNote").value;
-      let fileInput = document.getElementById("pinImage");
-
-      if (fileInput.files.length > 0) {
-        let file = fileInput.files[0];
-        let reader = new FileReader();
-        reader.onload = function(e) {
-          let imgData = e.target.result; // base64 string
-          pins.push({ lat, lng, title, note, img: imgData });
-          savePins(pins);
-          renderPins();
-          map.closePopup();
-        };
-        reader.readAsDataURL(file);
-      } else {
-        pins.push({ lat, lng, title, note, img: null });
-        savePins(pins);
-        renderPins();
-        map.closePopup();
+    // Preview images when user selects files in the popup input
+    window.previewImages = async function(event, popupId) {
+      try {
+        const files = event.target.files;
+        if (!files || files.length === 0) {
+          tempImages[popupId] = [];
+          const previewContainer = document.getElementById(`pinPreviewContainer-${popupId}`);
+          if (previewContainer) previewContainer.innerHTML = "";
+          return;
+        }
+        const dataURLs = await readFilesAsDataURLs(files);
+        tempImages[popupId] = dataURLs.slice(); // store for save
+        // render thumbnails
+        const previewContainer = document.getElementById(`pinPreviewContainer-${popupId}`);
+        if (previewContainer) {
+          previewContainer.innerHTML = dataURLs.map(d => `<img src="${d}" style="max-width:100%; margin-bottom:6px; border-radius:6px;" onclick="window.open(this.src)"/>`).join("");
+        }
+      } catch (err) {
+        console.error("previewImages error", err);
+        alert("Couldn't load selected images. Try smaller files or a different image.");
       }
-    }
+    };
 
-    function deletePin(index) {
+    // Save pin (reads previewed images if not yet read). This function is async to await file reads if needed.
+    window.savePin = async function(popupId, lat, lng) {
+      const titleEl = document.getElementById(`pinTitle-${popupId}`);
+      const noteEl  = document.getElementById(`pinNote-${popupId}`);
+      const inputEl = document.getElementById(`pinImage-${popupId}`);
+
+      const title = titleEl ? titleEl.value : "";
+      const note  = noteEl ? noteEl.value : "";
+
+      // If files present but preview wasn't created (user clicked Save quickly),
+      // read them now.
+      if (inputEl && inputEl.files && inputEl.files.length > 0 && (!tempImages[popupId] || tempImages[popupId].length === 0)) {
+        try {
+          tempImages[popupId] = await readFilesAsDataURLs(inputEl.files);
+        } catch (e) {
+          console.error("Error reading files on save", e);
+          alert("Couldn't read the image files. Try again or select smaller files.");
+          return;
+        }
+      }
+
+      const images = tempImages[popupId] ? tempImages[popupId].slice() : [];
+
+      // push into pins
+      pins.push({ lat, lng, title, note, images });
+      try {
+        savePins(pins);
+      } catch (e) {
+        console.error("Failed to save pins:", e);
+        alert("Saving failed — localStorage might be full. Consider removing large images.");
+      }
+
+      // cleanup and rerender
+      delete tempImages[popupId];
+      map.closePopup();
+      renderPins();
+    };
+
+    // Delete pin
+    window.deletePin = function(index) {
+      if (!confirm("Delete this pin?")) return;
       pins.splice(index, 1);
       savePins(pins);
       renderPins();
+    };
+
+    // Escape HTML to avoid injection when rendering user text
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
     }
 
-    // Attach functions to window so popup buttons work
-    window.savePin = savePin;
-    window.deletePin = deletePin;
-
-    // Map click → add pin
-    map.on("click", (e) => {
-      addPin(e.latlng.lat, e.latlng.lng);
-    });
+    // Map click adds a pin (open a popup form)
+    map.on("click", (e) => addPin(e.latlng.lat, e.latlng.lng));
 
     // Render saved pins on load
     renderPins();
+
+    // Helpful note for user
+    console.log("Map ready. Click map to add pin. Images are saved in localStorage (base64 data URLs).");
   </script>
 </body>
 </html>
