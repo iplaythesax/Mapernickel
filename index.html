@@ -1,193 +1,116 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Interactive Map with Editable Notes + Gallery</title>
-<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-<style>
-  html, body { margin:0; padding:0; height:100%; }
-  #map { width:100%; height:100%; }
-  .popup-content img { max-width:150px; display:block; margin-bottom:5px; }
-  .popup-content button { margin:2px 0; }
-  .editable-text { cursor: pointer; border-bottom: 1px dotted #888; display: inline-block; }
-
-  /* Sidebar gallery */
-  #imageGallery {
-    position: absolute;
-    top: 10px;
-    right: 10px;
-    width: 250px;
-    max-height: 90%;
-    overflow-y: auto;
-    background: white;
-    border: 1px solid #ccc;
-    padding: 10px;
-    z-index: 1000;
-    display: none; /* hidden until a pin is clicked */
-    border-radius: 8px;
-    box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-  }
-  #imageGallery img {
-    width: 100%;
-    margin-bottom: 10px;
-    cursor: pointer;
-    border-radius: 6px;
-    transition: transform 0.2s;
-  }
-  #imageGallery img:hover {
-    transform: scale(1.05);
-  }
-</style>
+  <meta charset="UTF-8">
+  <title>My Google Maps Clone</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <style>
+    #map { height: 90vh; width: 100%; }
+    .pin-form { display: flex; flex-direction: column; gap: 8px; }
+    .pin-img { max-width: 200px; margin-top: 8px; border-radius: 6px; }
+    .btn { padding: 6px 10px; border: none; border-radius: 6px; cursor: pointer; }
+    .btn-save { background: #4caf50; color: white; }
+    .btn-delete { background: #f44336; color: white; margin-top: 5px; }
+  </style>
 </head>
 <body>
-<div id="map"></div>
-<div id="imageGallery"></div>
+  <h2>My Map Pins</h2>
+  <div id="map"></div>
 
-<!-- Leaflet -->
-<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script>
+    // --- Storage Helpers ---
+    function savePins(pins) {
+      localStorage.setItem("mapPins", JSON.stringify(pins));
+    }
+    function loadPins() {
+      const saved = localStorage.getItem("mapPins");
+      return saved ? JSON.parse(saved) : [];
+    }
 
-<!-- Firebase v12 modular SDK -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
-  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-analytics.js";
-  import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js";
-
-  // Firebase configuration
-  const firebaseConfig = {
-    apiKey: "AIzaSyAoTpaWPuqb__Jk9uipns0aRpud0sIG9rk",
-    authDomain: "mapernickel.firebaseapp.com",
-    projectId: "mapernickel",
-    storageBucket: "mapernickel.appspot.com",
-    messagingSenderId: "1098451360374",
-    appId: "1:1098451360374:web:9a87f7693e71e813fd9d57",
-    measurementId: "G-759J0EHB7K"
-  };
-
-  // Initialize Firebase
-  const app = initializeApp(firebaseConfig);
-  getAnalytics(app);
-  const storage = getStorage(app);
-
-  // Wait for DOM
-  document.addEventListener("DOMContentLoaded", () => {
-    const map = L.map('map', { doubleClickZoom: false }).setView([36.5, 127.8], 7);
-
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '© OpenStreetMap contributors',
+    let map = L.map("map").setView([37.5665, 126.9780], 12); // Default: Seoul
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 19
     }).addTo(map);
 
-    L.Icon.Default.mergeOptions({
-      iconUrl: 'https://unpkg.com/leaflet/dist/images/marker-icon.png',
-      shadowUrl: 'https://unpkg.com/leaflet/dist/images/marker-shadow.png'
-    });
-
+    let pins = loadPins();
     let markers = [];
-    let deletedStack = [];
 
-    // ---- Gallery function ----
-    function showGallery(images) {
-      const gallery = document.getElementById('imageGallery');
-      gallery.innerHTML = ""; // clear previous
-      if (images.length === 0) {
-        gallery.innerHTML = "<p>No images for this location.</p>";
-      } else {
-        images.forEach(url => {
-          const img = document.createElement('img');
-          img.src = url;
-          img.onclick = () => window.open(url, "_blank"); // open full image
-          gallery.appendChild(img);
-        });
-      }
-      gallery.style.display = "block";
-    }
+    function renderPins() {
+      markers.forEach(m => map.removeLayer(m));
+      markers = [];
 
-    // ---- Marker creation ----
-    function addMarker(lat, lng, text="", images=[]) {
-      const marker = L.marker([lat, lng]).addTo(map);
-      marker.customText = text;
-      marker.customImages = images;
+      pins.forEach((pin, index) => {
+        let marker = L.marker([pin.lat, pin.lng]).addTo(map);
 
-      function renderPopup() {
-        let html = '<div class="popup-content">';
-        html += `<div class="editable-text" id="editableText">${marker.customText || "Double-click to add note"}</div>`;
-        html += `<br>
-          <button id="addImageBtn">Add Image</button>
-          <input type="file" id="fileInput" accept="image/*" style="display:none" />
+        let popupContent = `
+          <h3>${pin.title || "Untitled"}</h3>
+          <p>${pin.note || ""}</p>
+          ${pin.img ? `<img src="${pin.img}" class="pin-img"/>` : ""}
+          <button class="btn btn-delete" onclick="deletePin(${index})">Delete</button>
         `;
-        html += '</div>';
-        marker.bindPopup(html);
-      }
 
-      renderPopup();
-
-      marker.on('popupopen', () => {
-        const addImageBtn = document.getElementById('addImageBtn');
-        const fileInput = document.getElementById('fileInput');
-        const editableText = document.getElementById('editableText');
-
-        addImageBtn.onclick = () => fileInput.click();
-
-        fileInput.onchange = function() {
-          const file = fileInput.files[0];
-          if (file && file.type.startsWith('image/')) {
-            const storageRef = ref(storage, `images/${Date.now()}-${file.name}`);
-            uploadBytes(storageRef, file).then(snapshot => {
-              getDownloadURL(snapshot.ref).then(url => {
-                marker.customImages.push(url);
-                renderPopup();
-                marker.openPopup(); // refresh popup
-                showGallery(marker.customImages); // also refresh sidebar gallery
-              });
-            });
-          }
-        };
-
-        editableText.ondblclick = () => {
-          const textarea = document.createElement('textarea');
-          textarea.value = marker.customText;
-          textarea.style.width = '100%';
-          textarea.style.boxSizing = 'border-box';
-          editableText.replaceWith(textarea);
-          textarea.focus();
-
-          textarea.onblur = () => {
-            marker.customText = textarea.value;
-            renderPopup();
-            marker.openPopup();
-          };
-        };
+        marker.bindPopup(popupContent);
+        markers.push(marker);
       });
-
-      marker.on('click', () => {
-        showGallery(marker.customImages);
-      });
-
-      marker.on('contextmenu', () => {
-        if (confirm('Are you sure you want to delete this marker?')) {
-          map.removeLayer(marker);
-          markers = markers.filter(m => m !== marker);
-          deletedStack.push({ lat, lng, text: marker.customText, images: marker.customImages });
-          document.getElementById('imageGallery').style.display = "none"; // hide gallery
-        }
-      });
-
-      markers.push(marker);
-      return marker;
     }
 
-    // ---- Map events ----
-    map.on('dblclick', e => addMarker(e.latlng.lat, e.latlng.lng));
+    function addPin(lat, lng) {
+      let formHtml = `
+        <div class="pin-form">
+          <input type="text" id="pinTitle" placeholder="Title" />
+          <textarea id="pinNote" placeholder="Note"></textarea>
+          <input type="file" id="pinImage" accept="image/*" />
+          <button class="btn btn-save" onclick="savePin(${lat}, ${lng})">Save</button>
+        </div>
+      `;
+      L.popup()
+        .setLatLng([lat, lng])
+        .setContent(formHtml)
+        .openOn(map);
+    }
 
-    document.addEventListener('keydown', e => {
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
-        const last = deletedStack.pop();
-        if (last) addMarker(last.lat, last.lng, last.text, last.images);
+    function savePin(lat, lng) {
+      let title = document.getElementById("pinTitle").value;
+      let note = document.getElementById("pinNote").value;
+      let fileInput = document.getElementById("pinImage");
+
+      if (fileInput.files.length > 0) {
+        let file = fileInput.files[0];
+        let reader = new FileReader();
+        reader.onload = function(e) {
+          let imgData = e.target.result; // base64 string
+          pins.push({ lat, lng, title, note, img: imgData });
+          savePins(pins);
+          renderPins();
+          map.closePopup();
+        };
+        reader.readAsDataURL(file);
+      } else {
+        pins.push({ lat, lng, title, note, img: null });
+        savePins(pins);
+        renderPins();
+        map.closePopup();
       }
+    }
+
+    function deletePin(index) {
+      pins.splice(index, 1);
+      savePins(pins);
+      renderPins();
+    }
+
+    // Attach functions to window so popup buttons work
+    window.savePin = savePin;
+    window.deletePin = deletePin;
+
+    // Map click → add pin
+    map.on("click", (e) => {
+      addPin(e.latlng.lat, e.latlng.lng);
     });
-  });
-</script>
+
+    // Render saved pins on load
+    renderPins();
+  </script>
 </body>
 </html>
-
