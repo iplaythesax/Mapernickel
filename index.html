@@ -19,13 +19,13 @@
 <!-- Leaflet -->
 <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 
-<!-- Firebase -->
-<script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-analytics.js"></script>
-<script src="https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js"></script>
+<!-- Firebase v12 modular SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+  import { getAnalytics } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-analytics.js";
+  import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js";
 
-<script>
-  // Firebase initialization
+  // Firebase configuration
   const firebaseConfig = {
     apiKey: "AIzaSyAoTpaWPuqb__Jk9uipns0aRpud0sIG9rk",
     authDomain: "mapernickel.firebaseapp.com",
@@ -35,13 +35,14 @@
     appId: "1:1098451360374:web:9a87f7693e71e813fd9d57",
     measurementId: "G-759J0EHB7K"
   };
-  firebase.initializeApp(firebaseConfig);
-  firebase.analytics();
-  const storage = firebase.storage();
 
-  // Wait for DOM to load
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  getAnalytics(app);
+  const storage = getStorage(app);
+
+  // Wait for DOM
   document.addEventListener("DOMContentLoaded", () => {
-
     const map = L.map('map', { doubleClickZoom: false }).setView([36.5, 127.8], 7);
 
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -92,12 +93,12 @@
         fileInput.onchange = function() {
           const file = fileInput.files[0];
           if (file && file.type.startsWith('image/')) {
-            const storageRef = storage.ref(`images/${Date.now()}-${file.name}`);
-            storageRef.put(file).then(snapshot => {
-              snapshot.ref.getDownloadURL().then(url => {
+            const storageRef = ref(storage, `images/${Date.now()}-${file.name}`);
+            uploadBytes(storageRef, file).then(snapshot => {
+              getDownloadURL(snapshot.ref).then(url => {
                 marker.customImages.push(url);
                 renderPopup();
-                marker.openPopup(); // reopen to refresh content
+                marker.openPopup(); // refresh popup
               });
             });
           }
@@ -148,7 +149,6 @@
         if (last) addMarker(last.lat, last.lng, last.text, last.images);
       }
     });
-
   });
 </script>
 </body>
