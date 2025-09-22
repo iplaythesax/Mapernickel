@@ -1,47 +1,179 @@
-marker.on('popupopen', (e) => {
-  const popup = e.popup.getElement(); // popup DOM root
-  const addImageBtn = popup.querySelector('#addImageBtn');
-  const fileInput = popup.querySelector('#fileInput');
-  const editableText = popup.querySelector('#editableText');
-  const deleteButtons = popup.querySelectorAll('.deleteImageBtn');
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Map with Sidebar Reviews</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+<style>
+  html, body { margin:0; padding:0; height:100%; font-family:sans-serif; }
+  #app { display:flex; height:100%; }
+  #map { flex:1; }
+  #sidebar {
+    width:300px; background:#f9f9f9; border-left:1px solid #ccc;
+    display:flex; flex-direction:column;
+  }
+  #sidebar h2 { margin:0; padding:10px; background:#eee; font-size:16px; }
+  #sidebar .content { flex:1; overflow-y:auto; padding:10px; }
+  .review { border-bottom:1px solid #ddd; padding:5px 0; }
+  .review img { max-width:100%; margin:5px 0; }
+  button { cursor:pointer; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+  <div id="sidebar">
+    <h2 id="sidebar-title">Select a marker</h2>
+    <div class="content" id="sidebar-content">Click a marker to see reviews and images.</div>
+  </div>
+</div>
 
-  addImageBtn.onclick = () => fileInput.click();
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-app.js";
+  import { getStorage, ref, uploadBytes, getDownloadURL } from "https://www.gstatic.com/firebasejs/12.2.1/firebase-storage.js";
 
-  fileInput.onchange = function() {
-    const file = fileInput.files[0];
-    if (file && file.type.startsWith('image/')) {
-      const storageRef = ref(storage, `images/${Date.now()}-${file.name}`);
-      uploadBytes(storageRef, file).then(snapshot => {
-        getDownloadURL(snapshot.ref).then(url => {
-          marker.customImages.push(url);
-          renderPopup();
-          marker.openPopup(); // refresh popup
-        });
+  // Firebase configuration
+  const firebaseConfig = {
+    apiKey: "AIzaSyAoTpaWPuqb__Jk9uipns0aRpud0sIG9rk",
+    authDomain: "mapernickel.firebaseapp.com",
+    projectId: "mapernickel",
+    storageBucket: "mapernickel.appspot.com",
+    messagingSenderId: "1098451360374",
+    appId: "1:1098451360374:web:9a87f7693e71e813fd9d57",
+    measurementId: "G-759J0EHB7K"
+  };
+
+  // Initialize Firebase
+  const app = initializeApp(firebaseConfig);
+  const storage = getStorage(app);
+
+  // Initialize map
+  const map = L.map('map', { doubleClickZoom: false }).setView([36.5, 127.8], 7);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '© OpenStreetMap contributors',
+    maxZoom: 19
+  }).addTo(map);
+
+  let markers = [];
+  let deletedStack = [];
+  let activeMarker = null;
+
+  function renderSidebar(marker) {
+    const sidebarTitle = document.getElementById("sidebar-title");
+    const sidebarContent = document.getElementById("sidebar-content");
+
+    if (!marker) {
+      sidebarTitle.textContent = "Select a marker";
+      sidebarContent.innerHTML = "Click a marker to see reviews and images.";
+      return;
+    }
+
+    sidebarTitle.textContent = `Marker at (${marker.getLatLng().lat.toFixed(3)}, ${marker.getLatLng().lng.toFixed(3)})`;
+
+    let html = "";
+
+    // Images
+    html += `<h3>Images</h3>`;
+    if (marker.data.images.length === 0) {
+      html += `<p>No images yet.</p>`;
+    } else {
+      marker.data.images.forEach((url, i) => {
+        html += `<div class="review"><img src="${url}" alt="img"></div>`;
       });
     }
-  };
+    html += `<button id="addImageBtn">+ Add Image</button><input type="file" id="fileInput" accept="image/*" style="display:none">`;
 
-  deleteButtons.forEach(btn => {
-    btn.onclick = () => {
-      const index = parseInt(btn.getAttribute('data-index'));
-      marker.customImages.splice(index, 1);
-      renderPopup();
-      marker.openPopup();
+    // Reviews
+    html += `<h3>Reviews</h3>`;
+    if (marker.data.reviews.length === 0) {
+      html += `<p>No reviews yet.</p>`;
+    } else {
+      marker.data.reviews.forEach((txt, i) => {
+        html += `<div class="review">${txt}</div>`;
+      });
+    }
+    html += `<button id="addReviewBtn">+ Add Review</button>`;
+
+    sidebarContent.innerHTML = html;
+
+    // Hook up buttons
+    const addImageBtn = document.getElementById("addImageBtn");
+    const fileInput = document.getElementById("fileInput");
+    const addReviewBtn = document.getElementById("addReviewBtn");
+
+    addImageBtn.onclick = () => fileInput.click();
+
+    fileInput.onchange = () => {
+      const file = fileInput.files[0];
+      if (file && file.type.startsWith("image/")) {
+        const storageRef = ref(storage, `images/${Date.now()}-${file.name}`);
+        uploadBytes(storageRef, file).then(snapshot => {
+          getDownloadURL(snapshot.ref).then(url => {
+            marker.data.images.push(url);
+            renderSidebar(marker);
+          });
+        });
+      }
     };
+
+    addReviewBtn.onclick = () => {
+      const txt = prompt("Enter your review:");
+      if (txt) {
+        marker.data.reviews.push(txt);
+        renderSidebar(marker);
+      }
+    };
+  }
+
+  function addMarker(lat, lng) {
+    const marker = L.marker([lat, lng]).addTo(map);
+    marker.data = { images: [], reviews: [] };
+
+    marker.on('click', () => {
+      activeMarker = marker;
+      renderSidebar(marker);
+    });
+
+    marker.on('contextmenu', () => {
+      if (confirm("Delete this marker?")) {
+        map.removeLayer(marker);
+        markers = markers.filter(m => m !== marker);
+        deletedStack.push(marker);
+        if (activeMarker === marker) {
+          activeMarker = null;
+          renderSidebar(null);
+        }
+      }
+    });
+
+    markers.push(marker);
+    return marker;
+  }
+
+  // Add markers on double click
+  map.on('dblclick', e => {
+    const m = addMarker(e.latlng.lat, e.latlng.lng);
+    activeMarker = m;
+    renderSidebar(m);
   });
 
-  editableText.ondblclick = () => {
-    const textarea = document.createElement('textarea');
-    textarea.value = marker.customText;
-    textarea.style.width = '100%';
-    textarea.style.boxSizing = 'border-box';
-    editableText.replaceWith(textarea);
-    textarea.focus();
+  // Undo with Ctrl+Z
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') {
+      const last = deletedStack.pop();
+      if (last) {
+        const m = addMarker(last.getLatLng().lat, last.getLatLng().lng);
+        m.data = last.data;
+        activeMarker = m;
+        renderSidebar(m);
+      }
+    }
+  });
 
-    textarea.onblur = () => {
-      marker.customText = textarea.value;
-      renderPopup();
-      marker.openPopup();
-    };
-  };
-});
+  // Init sidebar
+  renderSidebar(null);
+</script>
+</body>
+</html>
